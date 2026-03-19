@@ -3,6 +3,9 @@ package com.coworking.memberservice.service;
 import com.coworking.memberservice.model.Member;
 import com.coworking.memberservice.model.SubscriptionType;
 import com.coworking.memberservice.repository.MemberRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -13,9 +16,17 @@ import java.util.List;
 public class MemberService {
 
     private final MemberRepository memberRepository;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
 
-    public MemberService(MemberRepository memberRepository) {
+    public MemberService(
+            MemberRepository memberRepository,
+            KafkaTemplate<String, String> kafkaTemplate,
+            ObjectMapper objectMapper
+    ) {
         this.memberRepository = memberRepository;
+        this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
     }
 
     public List<Member> findAll() {
@@ -49,6 +60,7 @@ public class MemberService {
 
     public void delete(Long id) {
         memberRepository.delete(findById(id));
+        publishMemberDeleted(id);
     }
 
     public EligibilityResponse eligibility(Long id) {
@@ -81,5 +93,16 @@ public class MemberService {
     }
 
     public record EligibilityResponse(boolean eligible, boolean suspended) {
+    }
+
+    private void publishMemberDeleted(Long memberId) {
+        try {
+            kafkaTemplate.send("member.deleted", objectMapper.writeValueAsString(new MemberDeletedEvent(memberId)));
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot publish member deletion event");
+        }
+    }
+
+    private record MemberDeletedEvent(Long memberId) {
     }
 }

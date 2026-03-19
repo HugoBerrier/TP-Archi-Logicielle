@@ -2,6 +2,9 @@ package com.coworking.reservationservice.service;
 
 import com.coworking.reservationservice.client.MemberClient;
 import com.coworking.reservationservice.client.RoomClient;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.kafka.core.KafkaTemplate;
 import com.coworking.reservationservice.model.Reservation;
 import com.coworking.reservationservice.model.ReservationStatus;
 import com.coworking.reservationservice.repository.ReservationRepository;
@@ -17,15 +20,21 @@ public class ReservationService {
     private final ReservationRepository reservationRepository;
     private final RoomClient roomClient;
     private final MemberClient memberClient;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
 
     public ReservationService(
             ReservationRepository reservationRepository,
             RoomClient roomClient,
-            MemberClient memberClient
+            MemberClient memberClient,
+            KafkaTemplate<String, String> kafkaTemplate,
+            ObjectMapper objectMapper
     ) {
         this.reservationRepository = reservationRepository;
         this.roomClient = roomClient;
         this.memberClient = memberClient;
+        this.kafkaTemplate = kafkaTemplate;
+        this.objectMapper = objectMapper;
     }
 
     public List<Reservation> findAll() {
@@ -45,11 +54,7 @@ public class ReservationService {
         reservation.setId(null);
         reservation.setStatus(ReservationStatus.CONFIRMED);
         Reservation saved = reservationRepository.save(reservation);
-
-        memberClient.incrementBookings(saved.getMemberId());
-        if (isActiveNow(saved)) {
-            roomClient.updateAvailability(saved.getRoomId(), false);
-        }
+        publishReservationCreated(saved);
         return saved;
     }
 
@@ -60,8 +65,7 @@ public class ReservationService {
         }
         reservation.setStatus(ReservationStatus.CANCELLED);
         Reservation saved = reservationRepository.save(reservation);
-        memberClient.decrementBookings(saved.getMemberId());
-        roomClient.updateAvailability(saved.getRoomId(), true);
+        publishReservationReleased(saved);
         return saved;
     }
 
@@ -72,9 +76,27 @@ public class ReservationService {
         }
         reservation.setStatus(ReservationStatus.COMPLETED);
         Reservation saved = reservationRepository.save(reservation);
-        memberClient.decrementBookings(saved.getMemberId());
-        roomClient.updateAvailability(saved.getRoomId(), true);
+        publishReservationReleased(saved);
         return saved;
+    }
+
+    public void cancelConfirmedForRoom(Long roomId) {
+        List<Reservation> reservations = reservationRepository.findByRoomIdAndStatus(roomId, ReservationStatus.CONFIRMED);
+        for (Reservation reservation : reservations) {
+            reservation.setStatus(ReservationStatus.CANCELLED);
+            reservationRepository.save(reservation);
+            publishReservationReleased(reservation);
+        }
+    }
+
+    public void deleteAllForMember(Long memberId) {
+        List<Reservation> reservations = reservationRepository.findByMemberId(memberId);
+        for (Reservation reservation : reservations) {
+            if (reservation.getStatus() == ReservationStatus.CONFIRMED) {
+                publishReservationReleased(reservation);
+            }
+        }
+        reservationRepository.deleteAll(reservations);
     }
 
     private void validateDateWindow(Reservation reservation) {
@@ -118,5 +140,44 @@ public class ReservationService {
     private boolean isActiveNow(Reservation reservation) {
         return reservation.getStartDateTime().isBefore(java.time.LocalDateTime.now())
                 && reservation.getEndDateTime().isAfter(java.time.LocalDateTime.now());
+    }
+
+    private void publishReservationCreated(Reservation reservation) {
+        try {
+            kafkaTemplate.send(
+                    "reservation.created",
+                    objectMapper.writeValueAsString(
+                            new ReservationEvent(
+                                    reservation.getId(),
+                                    reservation.getRoomId(),
+                                    reservation.getMemberId(),
+                                    isActiveNow(reservation)
+                            )
+                    )
+            );
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot publish reservation creation event");
+        }
+    }
+
+    private void publishReservationReleased(Reservation reservation) {
+        try {
+            kafkaTemplate.send(
+                    "reservation.released",
+                    objectMapper.writeValueAsString(
+                            new ReservationEvent(
+                                    reservation.getId(),
+                                    reservation.getRoomId(),
+                                    reservation.getMemberId(),
+                                    isActiveNow(reservation)
+                            )
+                    )
+            );
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Cannot publish reservation release event");
+        }
+    }
+
+    private record ReservationEvent(Long reservationId, Long roomId, Long memberId, boolean activeNow) {
     }
 }
