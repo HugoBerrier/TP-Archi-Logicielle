@@ -1,0 +1,295 @@
+{
+  "info": {
+    "_postman_id": "8d6c587d-a3a6-4cf3-98fe-9b2f3d714001",
+    "name": "Coworking TP - Step 5 Tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Create Room Paris",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Salle Paris A\",\n  \"city\": \"Paris\",\n  \"capacity\": 8,\n  \"type\": \"MEETING_ROOM\",\n  \"hourlyRate\": 45.00,\n  \"available\": true\n}"
+        },
+        "url": "{{baseUrl}}/api/rooms"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200/201', function () {",
+              "    pm.expect([200, 201]).to.include(pm.response.code);",
+              "});",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('roomId1', json.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Create Room Lyon",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Open Lyon\",\n  \"city\": \"Lyon\",\n  \"capacity\": 20,\n  \"type\": \"OPEN_SPACE\",\n  \"hourlyRate\": 30.00,\n  \"available\": true\n}"
+        },
+        "url": "{{baseUrl}}/api/rooms"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('roomId2', json.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Create Member BASIC",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"Alice Martin\",\n  \"email\": \"alice@test.com\",\n  \"subscriptionType\": \"BASIC\"\n}"
+        },
+        "url": "{{baseUrl}}/api/members"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('memberId1', json.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Create Member PRO",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"Bob Dupont\",\n  \"email\": \"bob@test.com\",\n  \"subscriptionType\": \"PRO\"\n}"
+        },
+        "url": "{{baseUrl}}/api/members"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('memberId2', json.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Create Reservation #1 (BASIC)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"roomId\": {{roomId1}},\n  \"memberId\": {{memberId1}},\n  \"startDateTime\": \"2030-03-20T10:00:00\",\n  \"endDateTime\": \"2030-03-20T12:00:00\"\n}"
+        },
+        "url": "{{baseUrl}}/api/reservations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('reservationId1', json.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Overlap Reservation (must fail)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"roomId\": {{roomId1}},\n  \"memberId\": {{memberId2}},\n  \"startDateTime\": \"2030-03-20T11:00:00\",\n  \"endDateTime\": \"2030-03-20T13:00:00\"\n}"
+        },
+        "url": "{{baseUrl}}/api/reservations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Overlap should fail', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([400, 409]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Create Reservation #2 (reach BASIC quota)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"roomId\": {{roomId2}},\n  \"memberId\": {{memberId1}},\n  \"startDateTime\": \"2030-03-21T14:00:00\",\n  \"endDateTime\": \"2030-03-21T16:00:00\"\n}"
+        },
+        "url": "{{baseUrl}}/api/reservations"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('reservationId2', json.id);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Check BASIC Member Suspended",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/members/{{memberId1}}"
+      }
+    },
+    {
+      "name": "09 - Cancel Reservation #1",
+      "request": {
+        "method": "PUT",
+        "url": "{{baseUrl}}/api/reservations/{{reservationId1}}/cancel"
+      }
+    },
+    {
+      "name": "10 - Check BASIC Member Unsuspended",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/members/{{memberId1}}"
+      }
+    },
+    {
+      "name": "11 - Delete Room #2 (Kafka propagation)",
+      "request": {
+        "method": "DELETE",
+        "url": "{{baseUrl}}/api/rooms/{{roomId2}}"
+      }
+    },
+    {
+      "name": "12 - List Reservations after Room Delete",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations"
+      }
+    },
+    {
+      "name": "13 - Delete Member #1 (Kafka propagation)",
+      "request": {
+        "method": "DELETE",
+        "url": "{{baseUrl}}/api/members/{{memberId1}}"
+      }
+    },
+    {
+      "name": "14 - List Reservations after Member Delete",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/reservations"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "roomId1",
+      "value": "1"
+    },
+    {
+      "key": "roomId2",
+      "value": "2"
+    },
+    {
+      "key": "memberId1",
+      "value": "1"
+    },
+    {
+      "key": "memberId2",
+      "value": "2"
+    },
+    {
+      "key": "reservationId1",
+      "value": "1"
+    },
+    {
+      "key": "reservationId2",
+      "value": "2"
+    }
+  ]
+}
