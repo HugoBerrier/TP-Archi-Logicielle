@@ -8,6 +8,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import com.coworking.reservationservice.model.Reservation;
 import com.coworking.reservationservice.model.ReservationStatus;
 import com.coworking.reservationservice.repository.ReservationRepository;
+import com.coworking.reservationservice.service.state.ReservationStateResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,19 +23,22 @@ public class ReservationService {
     private final MemberClient memberClient;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
+    private final ReservationStateResolver reservationStateResolver;
 
     public ReservationService(
             ReservationRepository reservationRepository,
             RoomClient roomClient,
             MemberClient memberClient,
             KafkaTemplate<String, String> kafkaTemplate,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ReservationStateResolver reservationStateResolver
     ) {
         this.reservationRepository = reservationRepository;
         this.roomClient = roomClient;
         this.memberClient = memberClient;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
+        this.reservationStateResolver = reservationStateResolver;
     }
 
     public List<Reservation> findAll() {
@@ -60,10 +64,7 @@ public class ReservationService {
 
     public Reservation cancel(Long id) {
         Reservation reservation = findById(id);
-        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only CONFIRMED reservation can be cancelled");
-        }
-        reservation.setStatus(ReservationStatus.CANCELLED);
+        reservationStateResolver.resolve(reservation.getStatus()).cancel(reservation);
         Reservation saved = reservationRepository.save(reservation);
         publishReservationReleased(saved);
         return saved;
@@ -71,10 +72,7 @@ public class ReservationService {
 
     public Reservation complete(Long id) {
         Reservation reservation = findById(id);
-        if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only CONFIRMED reservation can be completed");
-        }
-        reservation.setStatus(ReservationStatus.COMPLETED);
+        reservationStateResolver.resolve(reservation.getStatus()).complete(reservation);
         Reservation saved = reservationRepository.save(reservation);
         publishReservationReleased(saved);
         return saved;
